@@ -1,0 +1,19 @@
+# =====================================================================
+# BỘ QUY TẮC PHÁT HIỆN XÂM NHẬP (SNORT IDS RULES) - DDH ELECTRONICS
+# =====================================================================
+
+# [Rule 1]: Phát hiện tấn công SQL Injection cơ bản (Boolean-based / Bypass Auth)
+alert tcp any any -> any 80 (msg:"[ALARM-SQLi] SQL Injection Attempt Detected: ' OR 1=1 --"; content:"' OR 1=1 --"; nocase; priority:1; sid:100001; rev:2;)
+
+# [Rule 2]: Phát hiện tấn công SQL Injection trích xuất dữ liệu qua câu ghép (UNION SELECT)
+alert tcp any any -> any 80 (msg:"[ALARM-SQLi] SQL Injection UNION SELECT Data Extraction"; content:"UNION"; nocase; content:"SELECT"; nocase; priority:1; sid:100002; rev:2;)
+
+# [Rule 3]: Phát hiện tấn công SQL Injection phá hoại cấu trúc Database (DROP TABLE)
+alert tcp any any -> any 80 (msg:"[ALARM-SQLi] Destructive SQL Injection DROP TABLE"; content:"DROP TABLE"; nocase; priority:1; sid:100003; rev:2;)
+
+# [Rule 4]: Phát hiện rà quét tìm kiếm tệp tin cấu hình nhạy cảm (Directory Traversal / Sensitive Files)
+alert tcp any any -> any 80 (msg:"[ALARM-PROBE] Sensitive File Access Attempt (.env / config)"; content:".env"; nocase; priority:2; sid:100004; rev:1;)
+
+# [Rule 5 - Bonus]: Phát hiện tấn công vét cạn mật khẩu Brute-force Login
+# Nhận diện lưu lượng POST dồn dập vào đường dẫn /login
+alert tcp any any -> any 80 (msg:"[ALARM-BRUTEFORCE] High Frequency POST to /login (Brute Force Detected)"; content:"POST"; nocase; content:"/login"; nocase; threshold: type threshold, track by_src, count 5, seconds 20; priority:1; sid:100005; rev:1;)

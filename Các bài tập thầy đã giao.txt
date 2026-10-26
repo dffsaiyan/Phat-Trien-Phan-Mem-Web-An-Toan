@@ -1,0 +1,118 @@
+Bài 1: Tình huống: Một website cần đánh giá rủi ro tiềm ẩn về bảo mật, đề xuất sử dụng công cụ để tự động đánh giá.
+Yêu cầu: Cài đặt một công cụ Scan để tìm kiểm lỗ hổng bảo mật, thực hiện quét với hệ thống dự kiến sẽ nâng cấp bảo mật, viết report chi tiết về các rủi ro bảo mật và đưa ra hướng giải quyết.
+Hạn nộp: 23h59 ngày 20/09/2026
+
+bài 2: Yêu cầu
+Cài đặt SSL bằng Let's Encrypt hoặc dịch vụ tương tự
+Cấu hình Virtual Host với HTTPS
+
+Báo cáo:
+Báo cáo doc/docx (2–4 trang) gồm: mục tiêu, môi trường, các lệnh đã chạy (copy log), ảnh màn hình (chứng chỉ được cấp, trang site load qua HTTPS, output certbot), kết quả openssl s_client/curl -I, kết quả test SSL Labs (hoặc mô tả).
+File cấu hình Virtual Host đã sửa (/etc/nginx/sites-available/... hoặc /etc/apache2/sites-available/...).
+Ghi lại lệnh kiểm tra renew và kết quả certbot renew --dry-run.
+(Optional) Kịch bản bash ngắn tự động hoá cài cert và config (nếu làm được: bonus).
+
+bài 3: Bài tập: Cài đặt Snort & Viết quy tắc phát hiện SQL Injection
+Cảnh Phương Văn
+•
+17 Sept
+100 points
+|
+Due 18 Sept, 23:59
+* Yêu cầu chi tiết
+1. Chuẩn bị môi trường
+- Cài đặt Ubuntu Server 20.04+ (hoặc CentOS 7/8).
+- Có 2 máy/VM:
+Attacker: dùng trình duyệt hoặc công cụ (curl, sqlmap).
+Target + Snort: chạy Snort để giám sát lưu lượng (interface eth0).
+2. Cài đặt Snort
+- Cài Snort qua package manager:
+sudo apt update
+sudo apt install snort -y
+- Kiểm tra version:
+snort -V
+
+3. Tạo file rule phát hiện SQL Injection
+ Tạo file /etc/snort/rules/sql.rules với nội dung:
+alert tcp any any -> any 80 (msg:"SQL Injection Attempt"; content:"' OR 1=1 --"; nocase; sid:100001; rev:1;)
+alert tcp any any -> any 80 (msg:"SQL Injection UNION SELECT"; content:"UNION SELECT"; nocase; sid:100002; rev:1;)
+alert tcp any any -> any 80 (msg:"SQL Injection DROP TABLE"; content:"DROP TABLE"; nocase; sid:100003; rev:1;)
+- Thêm rule này vào config snort.conf:
+include $RULE_PATH/sql.rules
+
+4. Chạy Snort để giám sát
+- Chạy Snort ở chế độ IDS (console alert):
+sudo snort -A console -q -c /etc/snort/snort.conf -i eth0
+
+5. Kiểm thử tấn công SQL Injection
+- Từ máy Attacker, gửi request giả lập SQLi:
+curl "http://<target-ip>/?id=1' OR 1=1 --"
+curl "http://<target-ip>/?id=1 UNION SELECT username, password FROM users"
+- Quan sát trên console của Snort → hiển thị alert:
+[**] [1:100001:1] SQL Injection Attempt [**]
+[**] [1:100002:1] SQL Injection UNION SELECT [**]
+
+6. Báo cáo kết quả
+Sinh viên cần nộp:
+File doc/docs
+Screenshot: Snort chạy + alert log.
+File rule sql.rules.
+Giải thích ngắn:
+Vì sao rule match được?
+Ưu nhược điểm của cách match content.
+Đề xuất cải tiến (ví dụ dùng pcre để match regex phức tạp).
+
+* Điểm cộng (Bonus)
+Viết thêm rule phát hiện brute-force login (Failed login).
+Dùng sqlmap để tấn công thử, xem Snort có phát hiện không.
+Kết hợp Snort với Barnyard2 + MySQL + BASE/ELK để lưu log và phân tích.
+
+bài 4: Bài tập: Phân tích tấn công Port Scan bằng WIRESHARK
+Cảnh Phương Văn
+•
+17 Sept (Edited 17 Sept)
+100 points
+|
+Due 18 Sept, 23:59
+Cài đặt Wireshark trên máy phân tích.
+Có 2 máy/VM:
+: Kali Linux (Nmap).
+: Ubuntu Server (SSH, HTTP).
+Đảm bảo 2 máy kết nối cùng mạng.
+
+Mở Wireshark và bắt gói tin trên interface mạng đang sử dụng.
+Lưu file capture dưới tên: portscan.pcapng
+Từ máy Attacker thực hiện:
+nmap -sS <target-ip>
+nmap -sT <target-ip>
+nmap -p 1-1000 <target-ip>
+Xác định IP thực hiện quét cổng.
+Liệt kê các cổng bị quét.
+Phân biệt:
+TCP SYN Scan.
+TCP Connect Scan.
+Xác định các cổng mở trên máy Target.
+Sử dụng các bộ lọc:
+tcp.flags.syn == 1 && tcp.flags.ack == 0
+tcp.flags.reset == 1
+tcp
+Sinh viên cần nộp:
+File báo cáo DOC/DOCX hoặc PDF.
+File capture portscan.pcapng.
+Screenshot:
+Quá trình bắt gói tin.
+Kết quả phân tích.
+Các bộ lọc đã sử dụng.
+Giải thích ngắn:
+Địa chỉ IP nào thực hiện Port Scan?
+Các cổng nào đã được quét?
+Loại Scan được sử dụng là gì?
+Dấu hiệu nhận biết loại Scan đó trong Wireshark
+
+
+* Điểm cộng (Bonus)
+
+Thực hiện thêm UDP Scan: nmap -sU <target-ip>
+So sánh lưu lượng giữa SYN Scan và TCP Connect Scan.
+Thống kê số lượng kết nối theo IP bằng trong Wireshark.
+

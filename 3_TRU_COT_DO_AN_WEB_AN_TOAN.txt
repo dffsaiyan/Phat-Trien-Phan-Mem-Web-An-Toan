@@ -1,0 +1,170 @@
+================================================================================
+KẾ HOẠCH TRIỂN KHAI ĐỒ ÁN CUỐI KỲ - PHÁT TRIỂN PHẦN MỀM WEB AN TOÀN (EPU)
+Học phần: Phát triển phần mềm web an toàn (Mã HP: 002033)
+Giảng viên hướng dẫn: ThS. Phương Văn Cảnh
+Nhóm sinh viên thực hiện:
+  1. Nguyễn Đức Dương (Trưởng nhóm - D18CNPM2)
+  2. Nguyễn Văn Đạt
+  3. Nguyễn Văn Hiếu
+Dự án nền tảng: DDH-Electronics (Laravel 11 E-Commerce)
+================================================================================
+
+TỔNG QUAN CHIẾN LƯỢC ĐẠT ĐIỂM TỐI ĐA (10/10 - A+)
+Bao gồm 3 TRỤ CỘT KỸ THUẬT CỐT LÕI + 1 PHẦN CHUẨN BỊ VẤN ĐÁP ĐẶC THÙ EPU.
+
+--------------------------------------------------------------------------------
+TRỤ CỘT 1: BẢO MẬT MÃ NGUỒN WEB DDH-ELECTRONICS (TẦNG ỨNG DỤNG - CODE SECURITY)
+(Thực hiện trực tiếp trong thư mục: DDH-Electronics)
+--------------------------------------------------------------------------------
+1. Hardening cấu hình môi trường (.env & config/session.php):
+   - Đặt APP_ENV=production, APP_DEBUG=false (ngăn lộ stack trace và mật khẩu database).
+   - Cấu hình cờ bảo vệ Session Cookie trong config/session.php:
+     + 'secure' => true (chỉ truyền Cookie qua kết nối HTTPS).
+     + 'http_only' => true (chặn JavaScript/XSS đọc trộm Cookie session).
+     + 'same_site' => 'lax' (chống tấn công giả mạo yêu cầu chéo miền CSRF).
+
+2. Bổ sung Middleware Security Headers (HTTP Headers):
+   - X-Frame-Options: SAMEORIGIN (chống tấn công Clickjacking).
+   - X-Content-Type-Options: nosniff (chống MIME-type sniffing).
+   - Content-Security-Policy (CSP) (kiểm soát nguồn nạp script/style, chặn XSS).
+   - Strict-Transport-Security (HSTS) (ép buộc trình duyệt luôn dùng HTTPS).
+
+3. Phòng chống tấn công dò mật khẩu (Brute Force Protection):
+   - Áp dụng Rate Limiting ('throttle:5,0.33') tại LoginController (tối đa 5 lần thử / 20 giây cho môi trường Demo).
+   - Cơ chế: Nếu đăng nhập sai quá 5 lần, hệ thống tự động khóa tạm thời và trả về mã lỗi HTTP 429 (Too Many Requests), sau 20 giây tự mở khóa lại.
+   - Tích hợp thêm CAPTCHA tại form đăng nhập quản trị.
+
+4. Vá lỗ hổng tải tệp tin nguy hiểm (Unrestricted File Upload - RCE Risk):
+   - Vị trí: Các hàm upload ảnh sản phẩm, banner, avatar trong Controller.
+   - Kiểm tra MIME-type nhị phân thực tế bằng finfo (chỉ cho phép jpeg, png, webp).
+   - Đổi tên file ngẫu nhiên bằng mã UUID/Timestamp, cấm giữ nguyên tên file gốc của người dùng.
+   - Cấm hoàn toàn các extension thực thi (.php, .phtml, .sh, .exe).
+
+5. Kiểm soát truy cập chặt chẽ (RBAC - Chống Broken Access Control):
+   - Bọc toàn bộ các route /admin/* qua Middleware 'auth' và kiểm tra cờ 'is_admin == 1'.
+   - Ngăn chặn người dùng thường hoặc hacker tự gõ URL /admin/dashboard để xem dữ liệu quản trị.
+
+6. Rà soát triệt để SQL Injection (SQLi) & Cross-Site Scripting (XSS):
+   - 100% câu truy vấn dùng Eloquent ORM / Parameterized Binding, tuyệt đối không ghép chuỗi SQL thô.
+   - Giao diện Blade luôn dùng {{ $data }} để tự động mã hóa ký tự đặc biệt (HTML entities escaping).
+
+* BẢNG HƯỚNG DẪN THAO TÁC TEST & LÝ THUYẾT VẤN ĐÁP TRỤ CỘT 1 (DÙNG KHI ĐI THI / BẢO VỆ):
+
+  1. Test Brute-Force (Chống tấn công vét cạn dò mật khẩu):
+     + Cách test: Gõ sai mật khẩu 5 lần liên tiếp tại /login -> Lần 6 thấy mã lỗi HTTP 429 Too Many Requests (chờ 20 giây tự mở khóa lại).
+     + Kỹ thuật dùng: Middleware 'throttle:5,0.33' của Laravel + Math CAPTCHA động.
+     + Tác dụng bảo vệ: Giới hạn tần suất request (Rate Limiting). Chặn đứng các tool tấn công tự động (như Hydra, Burp Intruder) gửi hàng nghìn mật khẩu/giây để phá khóa hoặc làm nghẽn tài nguyên máy chủ (DoS).
+
+  2. Test Phân quyền RBAC (Chống lỗi leo thang đặc quyền - Broken Access Control):
+     + Cách test: Đăng nhập tài khoản khách (Email: nguyenhieudocla123a@gmail.com | MK: 123456789) rồi tự gõ link /admin -> Thấy mã lỗi HTTP 403 Forbidden.
+     + Kỹ thuật dùng: Role-Based Access Control (RBAC) bọc qua Middleware 'auth', kiểm tra cờ 'is_admin == 1' và gọi hàm abort(403).
+     + Tác dụng bảo vệ: Đảm bảo nguyên tắc đặc quyền tối thiểu (Principle of Least Privilege). Người dùng thông thường dù cố tình mò ra URL quản trị cũng bị chặn cứng, không thể xem hay can thiệp dữ liệu quản trị.
+
+  3. Test Chống Upload File độc hại (Chống thực thi mã từ xa - Unrestricted File Upload / RCE):
+     + Cách test: Vào Đổi Avatar hoặc Thêm sản phẩm, chọn file shell.php tải lên -> Bị từ chối ngay. Tải ảnh thật -> Tự đổi tên mã ngẫu nhiên UUID.
+     + Kỹ thuật dùng: 3 lớp phòng ngự: Blacklist extension cấm (.php, .phtml, .sh, .exe), kiểm tra MIME-type nhị phân thực tế bằng PHP finfo, và đổi tên file bằng Str::uuid().
+     + Tác dụng bảo vệ: Ngăn chặn hacker đưa Web Shell lên server để chiếm quyền điều khiển hệ thống (RCE); ngăn chặn ghi đè file hệ thống và che giấu đường dẫn gốc.
+
+  4. Test Chống SQL Injection (Tách biệt mã lệnh và dữ liệu):
+     + Cách test: Gõ ' OR 1=1 -- hoặc ' UNION SELECT ... vào ô Tìm kiếm -> Trả về 0 kết quả (total: 0), không lộ dữ liệu, không nổ màn hình lỗi đỏ DB.
+     + Kỹ thuật dùng: Eloquent ORM và PDO Parameterized Queries (Prepared Statements).
+     + Tác dụng bảo vệ: Tách rời hoàn toàn Khung mã lệnh SQL (chốt cứng từ trước) và Dữ liệu người dùng (Data). Mọi ký tự nguy hiểm của hacker chỉ được xem là chuỗi chữ cái vô hại, vô hiệu hóa 100% mọi biến thể payload SQLi.
+
+  5. Test Tiêu đề An toàn Security Headers (Phòng thủ trình duyệt):
+     + Cách test: Bấm F12 -> tab Network -> click trang chủ -> xem Response Headers thấy có: X-Frame-Options, Content-Security-Policy (CSP), X-Content-Type-Options.
+     + Kỹ thuật dùng: Global Middleware 'SecurityHeaders' tự động gắn các trường bảo mật vào mọi phản hồi HTTP.
+     + Tác dụng bảo vệ:
+       - X-Frame-Options: SAMEORIGIN -> Chống tấn công Clickjacking (lừa click vào khung iframe vô hình).
+       - X-Content-Type-Options: nosniff -> Chống tấn công MIME-Sniffing (ép trình duyệt thực thi file sai định dạng).
+       - Content-Security-Policy (CSP) -> Giới hạn nguồn tài nguyên tin cậy, ngăn chặn chèn mã độc XSS từ trang ngoài.
+
+  6. Test Cookie Session An toàn (Chống đánh cắp phiên - Session Hijacking):
+     + Cách test: Bấm F12 -> tab Application -> Cookies -> Thấy tích xanh cột 'HttpOnly' và 'SameSite = Lax'.
+     + Kỹ thuật dùng: Cấu hình 'http_only => true' và 'same_site => lax' trong config/session.php.
+     + Tác dụng bảo vệ:
+       - HttpOnly: Cấm JavaScript truy cập vào cookie phiên (document.cookie), hacker dù chèn được mã XSS cũng không thể đánh cắp session để cướp tài khoản.
+       - SameSite=Lax: Ngăn chặn trình duyệt tự động gửi cookie khi có request từ website khác, chống triệt để tấn công CSRF (Cross-Site Request Forgery).
+
+--------------------------------------------------------------------------------
+TRỤ CỘT 2: HỆ THỐNG PHÒNG THỦ & GIÁM SÁT HẠ TẦNG (TẦNG SERVER & NETWORK)
+(Đã triển khai file cấu hình Nginx mẫu, bộ Rule Snort đầy đủ và Monitor thời gian thực)
+--------------------------------------------------------------------------------
+1. Web Server Nginx & Chứng chỉ SSL/TLS (Kế thừa Bài tập 2):
+   - Đã tạo file cấu hình mẫu hoàn chỉnh: 'DDH-Electronics/nginx/ddh-electronics.conf'
+   - Hỗ trợ đầy đủ Port 80 (HTTP) và Port 443 (HTTPS).
+   - Chuẩn bảo mật TLS 1.2 & TLS 1.3; tắt hoàn toàn giao thức lỗi thời (SSLv3, TLS 1.0, TLS 1.1).
+   - Tự động chuyển hướng 301 Permanent Redirect từ HTTP sang HTTPS.
+   - Bổ sung các Header bảo mật tầng Server (HSTS, X-Frame-Options, CSP, nosniff).
+   - Khóa chặn truy cập file ẩn và file cấu hình nhạy cảm (.env, .git, .htaccess) với mã 404/Deny.
+
+2. Hệ thống phát hiện xâm nhập Snort IDS (Kế thừa Bài tập 3):
+   - File quy tắc hoàn chỉnh: 'my_sql.rules' và 'DDH-Electronics/snort/my_sql.rules' gồm 5 Rules:
+     + Rule 1 (sid:100001): Phát hiện payload SQLi cơ bản (' OR 1=1 --).
+     + Rule 2 (sid:100002): Phát hiện payload trích xuất dữ liệu (UNION SELECT).
+     + Rule 3 (sid:100003): Phát hiện payload phá hoại database (DROP TABLE).
+     + Rule 4 (sid:100004): Phát hiện quét file cấu hình nhạy cảm (/.env, /wp-admin).
+     + Rule 5 (sid:100005 - Điểm cộng Bonus): Phát hiện tấn công vét cạn Brute Force /login (POST flood).
+   - Trình giám sát thời gian thực: 'START_SNORT_IDS.bat' (chạy trực tiếp trên Windows, tự động bắt gói tin tấn công và nổ cảnh báo đỏ rực kèm âm thanh tiếng bíp cảnh báo).
+
+3. Đường dẫn Demo trực tuyến công khai (Cloudflare Tunnel):
+   - Tích hợp sẵn trong 'START_DEMO_WEB.bat'.
+   - Tạo đường hầm HTTPS ra Internet an toàn qua công cụ cloudflared, cung cấp chứng chỉ SSL hợp lệ để giảng viên test từ xa.
+
+--------------------------------------------------------------------------------
+TRỤ CỘT 3: KỊCH BẢN THỰC NGHIỆM & DEMO THỰC CHIẾN (BEFORE vs AFTER)
+(Trình diễn trực tiếp trước Giảng viên khi chấm Đồ án với 2 cửa sổ: Web + Snort IDS)
+--------------------------------------------------------------------------------
+* CÔNG CỤ TỰ ĐỘNG HÓA TEST: 'TEST_ATTACKS_DEMO.bat' (1 cú click tự động bắn 6 bài test tấn công)
+
+* BẢNG SO SÁNH THỰC NGHIỆM ĐỐI CHỨNG (BEFORE vs AFTER):
++--------------------+------------------------------------+------------------------------------+
+| Loại tấn công      | TRƯỚC PHÒNG THỦ (BEFORE - LỖ HỔNG) | SAU PHÒNG THỦ (AFTER - BẢO MẬT)    |
++--------------------+------------------------------------+------------------------------------+
+| 1. SQL Injection   | - Ghép chuỗi SQL thô ($_GET).      | - Dùng Eloquent & Prepared Stmt.   |
+|    (' OR 1=1 --)   | - Web xổ sạch sản phẩm / sập DB.   | - Web trả về 0 kết quả (an toàn).  |
+|                    | - Không có cảnh báo mạng.          | - Snort IDS nổ Alert Rule 100001!  |
++--------------------+------------------------------------+------------------------------------+
+| 2. Trích xuất DB   | - Lộ toàn bộ email & pass users.   | - Query tách biệt mã lệnh & Data.  |
+|    (UNION SELECT)  | - Bị hacker dump sạch cơ sở dữ liệu| - Web an toàn, không rò rỉ dữ liệu.|
+|                    |                                    | - Snort IDS nổ Alert Rule 100002!  |
++--------------------+------------------------------------+------------------------------------+
+| 3. Brute Force     | - Hacker thử mật khẩu vô hạn.      | - Rate Limiting 'throttle:5,0.33'. |
+|    (Dò mật khẩu)   | - Server bị treo do nghẽn request. | - Bấm sai 5 lần -> Bị khóa 429!   |
+|                    | - Không có CAPTCHA.                | - Tích hợp Math CAPTCHA động.      |
+|                    |                                    | - Snort IDS nổ Alert Rule 100005!  |
++--------------------+------------------------------------+------------------------------------+
+| 4. File Upload RCE | - Cho phép tải file shell.php.     | - Chặn đuôi cấm (.php, .sh, .exe). |
+|    (Tải Web Shell) | - Hacker mở URL thực thi mã độc.   | - Soi mã nhị phân MIME thực tế.    |
+|                    | - Server bị cướp quyền điều khiển. | - Tự đổi tên ngẫu nhiên UUID.      |
++--------------------+------------------------------------+------------------------------------+
+| 5. Phân quyền RBAC | - Khách thường tự gõ link /admin   | - Middleware 'auth' & is_admin==1. |
+|    (Leo thang quyền|   vẫn xem được trang quản trị.     | - Tự gõ link /admin bị chặn đứng   |
+|                    |                                    |   ngay với mã HTTP 403 Forbidden!  |
++--------------------+------------------------------------+------------------------------------+
+| 6. An toàn HTTP    | - Không có Security Headers.       | - Gắn đầy đủ X-Frame-Options,      |
+|    & Session       | - Cookie không có cờ bảo vệ.       |   CSP, nosniff, HSTS.              |
+|                    | - Dễ bị Clickjacking, XSS, CSRF.   | - Cookie có HttpOnly & SameSite.   |
++--------------------+------------------------------------+------------------------------------+
+
+* KỊCH BẢN BIỂU DIỄN 3 PHÚT TRƯỚC THẦY CẢNH:
+- Bước 1: Chạy 'START_DEMO_WEB.bat' để mở Web và Cloudflare HTTPS.
+- Bước 2: Chạy 'START_SNORT_IDS.bat' để mở màn hình giám sát Snort IDS màu đỏ.
+- Bước 3: Chạy 'TEST_ATTACKS_DEMO.bat' (hoặc thao tác tay trên web).
+- Bước 4: Thầy thấy rõ ràng: Phía Web bảo vệ an toàn (After) VÀ Màn hình Snort lập tức nảy chuông cảnh báo đỏ theo thời gian thực!
+
+--------------------------------------------------------------------------------
+PHẦN BỔ SUNG ĐẶC THÙ EPU: BỘ CÂU HỎI VẤN ĐÁP TRỌNG TÂM CỦA THẦY CẢNH
+--------------------------------------------------------------------------------
+Khi bảo vệ đồ án, thầy Phương Văn Cảnh sẽ hỏi vấn đáp trực tiếp từng thành viên:
+1. "Chỉ ra đoạn code trong Laravel giúp ngăn chặn SQL Injection? Cơ chế Parameter Binding hoạt động thế nào?"
+   -> Trả lời: PDO tự động phân tách câu lệnh SQL và tham số dữ liệu, dữ liệu nhập vào luôn được coi là chuỗi (Literal String), không thể thay đổi cấu trúc cú pháp của câu lệnh SQL.
+
+2. "Tại sao phải đặt cờ HttpOnly, Secure, SameSite cho Cookie?"
+   -> Trả lời: HttpOnly chặn JavaScript đọc cookie (chống XSS đánh cắp Session ID). Secure ép cookie chỉ truyền qua HTTPS (chống nghe lén qua mạng). SameSite=Lax ngăn trình duyệt tự động gửi cookie trong request từ website bên ngoài (chống CSRF).
+
+3. "Cơ chế Rate Limiting chống Brute force hoạt động ra sao?"
+   -> Trả lời: Laravel dùng Cache để lưu số lần request theo Key = Throttle Key (kết hợp IP client + chuỗi email). Khi bộ đếm vượt quá ngưỡng trong thời gian định trước, Middleware lập tức ngắt request và trả về HTTP 429.
+
+4. "Cú pháp rule Snort trong my_sql.rules hoạt động thế nào? Ưu nhược điểm của cách match content?"
+   -> Trả lời: Rule tìm kiếm chuỗi byte thô trong gói tin TCP cổng 80. Ưu điểm là tốc độ kiểm tra cực nhanh, ít tốn CPU. Nhược điểm là dễ bị bypass nếu hacker dùng kỹ thuật mã hóa (URL Encode, Hex Encode, khoảng trắng tab...) hoặc gây cảnh báo sai (False Positive). Hướng cải tiến là sử dụng regex (pcre) và bộ giải mã HTTP preprocessor.
+================================================================================
